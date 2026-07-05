@@ -1,5 +1,8 @@
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using FileSync.Client.Security;
 using FileSync.Shared.Manifest;
 using FileSync.Shared.Protocol;
 using FileSync.Shared.Time;
@@ -15,23 +18,42 @@ public sealed class SyncSession : IAsyncDisposable
     private const int BufferSize = 64 * 1024;
 
     private readonly TcpClient _client;
-    private readonly NetworkStream _stream;
+    private readonly Stream _stream;
     private readonly ProtocolStreamReader _reader;
     private readonly ProtocolWriter _writer;
 
-    private SyncSession(TcpClient client)
+    private SyncSession(TcpClient client, Stream stream)
     {
         _client = client;
-        _stream = client.GetStream();
-        _reader = new ProtocolStreamReader(_stream);
-        _writer = new ProtocolWriter(_stream);
+        _stream = stream;
+        _reader = new ProtocolStreamReader(stream);
+        _writer = new ProtocolWriter(stream);
     }
 
-    public static async Task<SyncSession> ConnectAsync(string host, int port)
+    public static async Task<SyncSession> ConnectAsync(string host, int port, X509Certificate2? trustedServerCertificate = null)
     {
         var client = new TcpClient();
         await client.ConnectAsync(host, port);
-        return new SyncSession(client);
+
+        Stream stream = client.GetStream();
+
+        if (trustedServerCertificate is not null)
+        {
+            // TLS-handshake direct na de TCP-connect, vóór HELLO (PROTOCOL.md §8). In
+            // plaats van de normale CA-keten te controleren (die voor een zelfondertekend
+            // certificaat altijd faalt), vergelijken we het aangeboden certificaat expliciet
+            // met het vooraf vertrouwde certificaat — zie TrustedCertificateLoader.
+            var sslStream = new SslStream(
+                stream,
+                leaveInnerStreamOpen: false,
+                userCertificateValidationCallback: (_, certificate, _, _) =>
+                    TrustedCertificateLoader.MatchesThumbprint(trustedServerCertificate, certificate));
+
+            await sslStream.AuthenticateAsClientAsync(targetHost: host);
+            stream = sslStream;
+        }
+
+        return new SyncSession(client, stream);
     }
 
     public void Hello(string clientId)

@@ -1,6 +1,13 @@
 namespace FileSync.Client.Cli;
 
-public sealed record ClientOptions(string Host, int Port, string Folder, int IntervalSeconds, string ClientId, string CacheFilePath)
+public sealed record ClientOptions(
+    string Host,
+    int Port,
+    string Folder,
+    int IntervalSeconds,
+    string ClientId,
+    string CacheFilePath,
+    string? TrustedServerCertificatePath)
 {
     public const int DefaultPort = 4711;
     public const int DefaultIntervalSeconds = 5;
@@ -13,6 +20,7 @@ public sealed record ClientOptions(string Host, int Port, string Folder, int Int
         int interval = DefaultIntervalSeconds;
         string? clientId = null;
         string? cacheFilePath = null;
+        string? trustedServerCertificatePath = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -36,6 +44,11 @@ public sealed record ClientOptions(string Host, int Port, string Folder, int Int
                 case "--cache-file":
                     cacheFilePath = RequireValue(args, ref i);
                     break;
+                case "--server-cert":
+                    // Aanwezigheid van dit argument is meteen ook de TLS-schakelaar: geen
+                    // apart --tls-argument nodig, zie SyncEngine/SyncSession.
+                    trustedServerCertificatePath = RequireValue(args, ref i);
+                    break;
                 default:
                     throw new ArgumentException($"Onbekend argument: '{args[i]}'.");
             }
@@ -56,7 +69,7 @@ public sealed record ClientOptions(string Host, int Port, string Folder, int Int
         clientId ??= Environment.MachineName;
         cacheFilePath ??= Path.Combine(folder, ".filesync-cache.tsv");
 
-        return new ClientOptions(host, port, folder, interval, clientId, cacheFilePath);
+        return new ClientOptions(host, port, folder, interval, clientId, cacheFilePath, trustedServerCertificatePath);
     }
 
     private static string RequireValue(string[] args, ref int i)

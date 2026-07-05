@@ -1,13 +1,18 @@
 namespace FileSync.Server.Cli;
 
-public sealed record ServerOptions(int Port, string StorageRoot)
+public sealed record ServerOptions(int Port, string StorageRoot, int? TlsPort, string CertificatePath, string PublicCertificatePath)
 {
     public const int DefaultPort = 4711;
+    public const string DefaultCertificatePath = "server-cert.pfx";
+    public const string DefaultPublicCertificatePath = "server-cert.cer";
 
     public static ServerOptions Parse(string[] args)
     {
         int port = DefaultPort;
         string? storageRoot = null;
+        int? tlsPort = null;
+        string certificatePath = DefaultCertificatePath;
+        string publicCertificatePath = DefaultPublicCertificatePath;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -19,6 +24,15 @@ public sealed record ServerOptions(int Port, string StorageRoot)
                 case "--storage":
                     storageRoot = RequireValue(args, ref i);
                     break;
+                case "--tls-port":
+                    tlsPort = int.Parse(RequireValue(args, ref i));
+                    break;
+                case "--cert":
+                    certificatePath = RequireValue(args, ref i);
+                    break;
+                case "--public-cert":
+                    publicCertificatePath = RequireValue(args, ref i);
+                    break;
                 default:
                     throw new ArgumentException($"Onbekend argument: '{args[i]}'.");
             }
@@ -29,7 +43,7 @@ public sealed record ServerOptions(int Port, string StorageRoot)
             throw new ArgumentException("Verplicht argument ontbreekt: --storage <map>.");
         }
 
-        return new ServerOptions(port, Path.GetFullPath(storageRoot));
+        return new ServerOptions(port, Path.GetFullPath(storageRoot), tlsPort, certificatePath, publicCertificatePath);
     }
 
     private static string RequireValue(string[] args, ref int i)

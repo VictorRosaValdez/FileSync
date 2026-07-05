@@ -9,3 +9,7 @@ publish/
 
 # Lokale Claude Code instellingen (machine-specifiek)
 .claude/settings.local.json
+
+# Lokaal gegenereerde TLS-certificaten (bevatten een privésleutel, nooit committen)
+*.pfx
+*.cer

@@ -2,7 +2,7 @@
 
 ## Geautomatiseerde tests
 
-`FileSync.Tests` (NUnit, 90 tests) dekt:
+`FileSync.Tests` (NUnit, 98 tests) dekt:
 
 - **Protocol** (`FileSync.Tests/Protocol`): kopregel-/statusregel-/header-parsing, inclusief
   randgevallen (regel > 4096 bytes, kale LF, header zonder `": "`, pad met spaties,
@@ -10,12 +10,14 @@
 - **Validation** (`FileSync.Tests/Validation`): padvalidatie — traversal, verboden tekens,
   Windows reserved names, NFC-normalisatie, lengtegrenzen.
 - **Manifest / Hashing / Time**: (de)serialisatie, SHA-256-streaming, ISO-8601.
-- **Server** (`FileSync.Tests/Server`): `PathLockRegistry` (nooit blokkerend), en
+- **Server** (`FileSync.Tests/Server`): `PathLockRegistry` (nooit blokkerend),
   `UploadCommandHandler` end-to-end tegen een echte tijdelijke opslagmap: verse upload,
   tussenchunk, hervatting met juiste/foute offset, hash-mismatch, dedup, 423 bij conflict,
-  ongeldig pad.
+  ongeldig pad; en `ServerCertificateProvider` (genereert/hergebruikt het zelfondertekende
+  TLS-certificaat).
 - **Client** (`FileSync.Tests/Client`): `ManifestDiffer` (upload/download/delete-beslissingen,
-  inclusief de regressietest hieronder) en `LocalHashCache`.
+  inclusief de regressietest hieronder), `LocalHashCache`, en `TrustedCertificateLoader`
+  (thumbprint-vergelijking voor certificate pinning).
 
 Uitvoeren: `dotnet test FileSync.sln`.
 
@@ -89,3 +91,35 @@ en B.
 **Resultaat:** geverifieerd — bestand verdween uit de servermap (één `DELETE`-commando) en
 vervolgens ook uit werkplek B, zonder dat het ergens werd teruggezet (zie regressietest
 hierboven voor de bug die dit aanvankelijk verhinderde).
+
+## Extra uitdaging: TLS — handmatig geverifieerd
+
+1. Server gestart met `--tls-port 4712`: genereerde bij de eerste start automatisch
+   `server-cert.pfx` (privé) en `server-cert.cer` (publiek) in de opgegeven paden.
+2. Client gestart met `--server-cert <pad-naar-.cer>` tegen poort 4712: TLS-handshake
+   geslaagd (serverlog: `TLS-handshake geslaagd met ...`), en een test-upload kwam correct
+   en byte-identiek aan op de server — via de versleutelde verbinding.
+3. **Negatief scenario**: een tweede, nergens gerelateerd zelfondertekend certificaat
+   gegenereerd (door kort een tweede serverinstantie te starten) en dat als
+   `--server-cert` aan een client gegeven die naar de échte server verbond.
+   **Resultaat:** de TLS-handshake werd geweigerd
+   (`The remote certificate was rejected by the provided RemoteCertificateValidationCallback`),
+   er werd geen enkel bestand gesynchroniseerd, en de server bleef gewoon actief voor
+   andere (wél vertrouwde) clients. Dit bevestigt dat de thumbprint-pinning daadwerkelijk
+   blokkeert in plaats van decoratief te zijn.
+
+## Extra uitdaging: Docker — niet lokaal geverifieerd
+
+Docker was niet geïnstalleerd op de machine waarop dit project gebouwd is, dus de
+`Dockerfile` kon hier niet daadwerkelijk gebouwd en gedraaid worden. De Dockerfile is wel
+zorgvuldig nagelopen (multi-stage build, correcte relatieve `ProjectReference`-paden,
+`EXPOSE`/`VOLUME` voor poorten en opslag). Voer zelf uit en controleer:
+
+```
+docker build -t filesync-server .
+docker run -d --name filesync-server -p 4711:4711 -v filesync-data:/data filesync-server
+FileSync.Client.exe --host 127.0.0.1 --port 4711 --folder <syncmap> --interval 5 --client-id docker-test
+```
+**Verwacht resultaat:** client synchroniseert net zo goed met de gecontaineriseerde server
+als met een rechtstreeks gestarte server; `docker logs filesync-server` toont dezelfde
+logregels als een normale `FileSync.Server.exe`-sessie.

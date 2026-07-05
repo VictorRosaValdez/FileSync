@@ -10,7 +10,7 @@ try
 catch (ArgumentException ex)
 {
     Console.Error.WriteLine(ex.Message);
-    Console.Error.WriteLine("Gebruik: FileSync.Client --host <adres> --folder <map> [--port <poort>] [--interval <seconden>] [--client-id <naam>]");
+    Console.Error.WriteLine("Gebruik: FileSync.Client --host <adres> --folder <map> [--port <poort>] [--interval <seconden>] [--client-id <naam>] [--server-cert <pad.cer>]");
     return 1;
 }
 

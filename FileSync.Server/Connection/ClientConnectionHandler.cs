@@ -1,4 +1,7 @@
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using FileSync.Server.CommandHandlers;
 using FileSync.Server.Locking;
 using FileSync.Server.Storage;
@@ -20,25 +23,34 @@ public sealed class ClientConnectionHandler
     private readonly HashCache _hashCache;
     private readonly PathLockRegistry _lockRegistry;
     private readonly IConsoleLogger _logger;
+    private readonly X509Certificate2? _serverCertificate;
 
-    public ClientConnectionHandler(TcpClient client, FileStore fileStore, HashCache hashCache, PathLockRegistry lockRegistry, IConsoleLogger logger)
+    public ClientConnectionHandler(
+        TcpClient client,
+        FileStore fileStore,
+        HashCache hashCache,
+        PathLockRegistry lockRegistry,
+        IConsoleLogger logger,
+        X509Certificate2? serverCertificate = null)
     {
         _client = client;
         _fileStore = fileStore;
         _hashCache = hashCache;
         _lockRegistry = lockRegistry;
         _logger = logger;
+        _serverCertificate = serverCertificate;
     }
 
     public async Task RunAsync()
     {
         string remoteEndpoint = _client.Client.RemoteEndPoint?.ToString() ?? "onbekend";
-        _logger.Info($"Nieuwe verbinding van {remoteEndpoint}.");
+        _logger.Info($"Nieuwe verbinding van {remoteEndpoint}{(_serverCertificate is not null ? " (TLS)" : string.Empty)}.");
 
         try
         {
             using TcpClient client = _client;
-            await using NetworkStream stream = client.GetStream();
+            await using NetworkStream networkStream = client.GetStream();
+            await using Stream stream = await UpgradeToTlsIfNeededAsync(networkStream, remoteEndpoint);
 
             var ctx = new CommandContext(
                 new ProtocolStreamReader(stream),
@@ -51,7 +63,7 @@ public sealed class ClientConnectionHandler
 
             await RunRequestLoopAsync(ctx, remoteEndpoint);
         }
-        catch (Exception ex) when (ex is IOException or SocketException)
+        catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException)
         {
             _logger.Info($"Verbinding met {remoteEndpoint} verbroken: {ex.Message}");
         }
@@ -59,6 +71,24 @@ public sealed class ClientConnectionHandler
         {
             _logger.Error($"Onverwachte fout bij verbinding met {remoteEndpoint}: {ex}");
         }
+    }
+
+    // Op de TLS-poort (zie Program.cs) vindt de handshake direct na de TCP-connect plaats,
+    // vóór het eerste protocolcommando (PROTOCOL.md §8). Het protocol zelf blijft
+    // ongewijzigd: alleen de onderliggende Stream verandert van een kale NetworkStream in
+    // een versleutelde SslStream — ProtocolStreamReader/ProtocolWriter werken op beide
+    // identiek, omdat ze tegen de abstracte Stream-klasse geprogrammeerd zijn.
+    private async Task<Stream> UpgradeToTlsIfNeededAsync(NetworkStream networkStream, string remoteEndpoint)
+    {
+        if (_serverCertificate is null)
+        {
+            return networkStream;
+        }
+
+        var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false);
+        await sslStream.AuthenticateAsServerAsync(_serverCertificate, clientCertificateRequired: false, checkCertificateRevocation: false);
+        _logger.Info($"TLS-handshake geslaagd met {remoteEndpoint}.");
+        return sslStream;
     }
 
     private async Task RunRequestLoopAsync(CommandContext ctx, string remoteEndpoint)

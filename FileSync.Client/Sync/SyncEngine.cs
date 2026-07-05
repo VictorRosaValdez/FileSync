@@ -1,5 +1,7 @@
+using System.Security.Cryptography.X509Certificates;
 using FileSync.Client.Cli;
 using FileSync.Client.Net;
+using FileSync.Client.Security;
 using FileSync.Shared.Hashing;
 using FileSync.Shared.Logging;
 using FileSync.Shared.Manifest;
@@ -17,6 +19,7 @@ public sealed class SyncEngine
     private readonly ClientOptions _options;
     private readonly IConsoleLogger _logger;
     private readonly LocalHashCache _cache;
+    private readonly X509Certificate2? _trustedServerCertificate;
 
     public SyncEngine(ClientOptions options, IConsoleLogger logger)
     {
@@ -24,11 +27,15 @@ public sealed class SyncEngine
         _logger = logger;
         _cache = new LocalHashCache(options.CacheFilePath);
         _cache.Load();
+
+        _trustedServerCertificate = options.TrustedServerCertificatePath is { } path
+            ? TrustedCertificateLoader.Load(path)
+            : null;
     }
 
     public async Task RunOneCycleAsync()
     {
-        await using SyncSession session = await SyncSession.ConnectAsync(_options.Host, _options.Port);
+        await using SyncSession session = await SyncSession.ConnectAsync(_options.Host, _options.Port, _trustedServerCertificate);
 
         session.Hello(_options.ClientId);
         Dictionary<string, ManifestEntry> remote = session.Manifest().ToDictionary(e => e.Path);

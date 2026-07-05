@@ -141,7 +141,64 @@ Gebruik de raw-socket methode uit §7 om een `HELLO SYNC/9.9` te versturen.
   vond en fixte — zie `TESTING.md`), en er in het serverlog precies één `DELETE`-regel
   voor dat pad verschijnt.
 
-## 6. Troubleshooting
+## 6. Extra uitdaging: TLS testen
+
+1. Start de server met een extra TLS-poort:
+   ```powershell
+   FileSync.Server.exe --port 4711 --tls-port 4712 --storage D:\filesync-server-data
+   ```
+   Bij de allereerste keer verschijnen `server-cert.pfx` (privé, blijft op de server) en
+   `server-cert.cer` (publiek) in de werkmap. Het serverlog toont een regel die je eraan
+   herinnert dit `.cer`-bestand naar clients te kopiëren.
+2. Kopieer `server-cert.cer` naar elke clientmachine (USB-stick, netwerkshare, e-mail —
+   maakt niet uit, dit hoeft niet via het protocol zelf).
+3. Start de client met dat certificaat, tegen de TLS-poort:
+   ```powershell
+   FileSync.Client.exe --host <server-ip> --port 4712 --folder D:\filesync-sync --server-cert D:\server-cert.cer
+   ```
+   Serverlog moet tonen: `Nieuwe verbinding van ... (TLS)` gevolgd door
+   `TLS-handshake geslaagd met ...`.
+- ✅ **Positieve test**: bestanden synchroniseren normaal, exact als over de kale poort
+  4711 — het protocol zelf is ongewijzigd, alleen de transportlaag is versleuteld.
+- ✅ **Negatieve test** (het certificaat wordt écht gecontroleerd, niet alleen decoratief
+  ingesteld): geef een client per ongeluk (of expres, als test) een ánder `.cer`-bestand
+  mee dan wat de server daadwerkelijk gebruikt. Verwacht resultaat: de sync-cyclus faalt
+  met een foutmelding over een geweigerd certificaat, en er wordt niets gesynchroniseerd.
+
+## 7. Extra uitdaging: server in Docker testen
+
+Vereist Docker Desktop (Windows/Mac) of Docker Engine (Linux) op de servermachine.
+
+```powershell
+cd "C:\Git\Netwerk System en Security\FileSync"
+docker build -t filesync-server .
+docker run -d --name filesync-server -p 4711:4711 -p 4712:4712 -v filesync-data:/data filesync-server
+```
+
+Controleer dat de container draait en luistert:
+```powershell
+docker logs filesync-server
+```
+Verwacht: dezelfde logregel als een normaal gestarte server (`Server luistert op poort
+4711, opslagmap '/data'`).
+
+Verbind een gewone client (op een andere machine, of gewoon op localhost) precies zoals
+bij een niet-gecontaineriseerde server — de container is voor de client onzichtbaar, het
+is gewoon een TCP-server op poort 4711:
+```powershell
+FileSync.Client.exe --host <docker-host-ip> --port 4711 --folder D:\filesync-sync --interval 5 --client-id docker-test
+```
+- ✅ Geslaagd als: sync werkt identiek aan de niet-gecontaineriseerde server, en
+  `docker stop filesync-server && docker start filesync-server` de eerder
+  gesynchroniseerde bestanden behoudt (dankzij het `filesync-data`-volume).
+
+Opruimen na afloop:
+```powershell
+docker rm -f filesync-server
+docker volume rm filesync-data
+```
+
+## 8. Troubleshooting
 
 - **Client krijgt geen verbinding**: controleer dat de servermachine poort 4711 toestaat
   binnenkomend (`New-NetFirewallRule -DisplayName "FileSync" -Direction Inbound -LocalPort 4711 -Protocol TCP -Action Allow`
@@ -152,7 +209,7 @@ Gebruik de raw-socket methode uit §7 om een `HELLO SYNC/9.9` te versturen.
   een bestand omleidt; kijk in een los venster live mee in plaats van de output om te
   leiden, of gebruik `dotnet run ... | more` om zeker te zijn dat je live output ziet.
 
-## 7. Een rauw protocolverzoek sturen (voor test 5/6)
+## 9. Een rauw protocolverzoek sturen (voor test 5/6)
 
 Zonder extra tools, met PowerShell op elke Windows-machine:
 
