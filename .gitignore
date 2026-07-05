@@ -9,6 +9,7 @@ publish/
 
 # Lokale Claude Code instellingen (machine-specifiek)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Lokaal gegenereerde TLS-certificaten (bevatten een privésleutel, nooit committen)
 *.pfx
