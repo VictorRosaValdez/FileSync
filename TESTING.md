@@ -69,6 +69,24 @@ de juiste offset volgde `201 Created` en was het eindbestand byte-voor-byte iden
 het origineel. Voor de echte demo met een fysieke kabelonderbreking: gebruik een bestand
 van meerdere GB's zodat er tijd is om de verbinding daadwerkelijk te verbreken.
 
+**Aanvullend, letterlijke FR-7-acceptatietest (">4GB, geheugengebruik blijft vlak")**:
+uitgevoerd met de daadwerkelijk gepubliceerde `FileSync.Server.exe`/`FileSync.Client.exe`
+(niet vanuit de IDE) en een bestand van 4.400.000.000 bytes (~4,1 GiB, ruim over de
+4 GiB/2³²-grens). Geheugengebruik (Working Set) elke ~15 ms bemonsterd tijdens de volledige
+overdracht (~24 seconden):
+
+| Meting | Waarde |
+|---|---|
+| Piekgeheugen server | 27,7 MB |
+| Piekgeheugen client | 28,6 MB |
+| Bestandsgrootte | 4.400.000.000 bytes (4196,2 MiB) |
+| `.part`-bestand groeide naar | volledige bestandsgrootte, daarna atomisch hernoemd |
+| SHA-256 bron vs. servergevolgd | identiek |
+
+Geheugengebruik bleef dus ruim honderd keer kleiner dan de bestandsgrootte gedurende de
+hele overdracht — sluitend bewijs dat er gestreamd wordt (vaste 64 KiB-buffer) in plaats
+van het bestand volledig in te lezen.
+
 ### 4. Twee clients gelijktijdig (FR-6)
 Twee gelijktijdige `UPLOAD`-sessies naar verschillende paden slagen beide. Twee
 gelijktijdige `UPLOAD`-sessies naar hetzelfde pad: één krijgt `201`, de andere `423 Locked`.
